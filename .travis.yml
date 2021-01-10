@@ -1,0 +1,19 @@
+language: cpp
+os: linux
+dist: bionic
+
+matrix:
+  include:
+   - compiler: gcc
+
+   - compiler: clang
+
+before_script:
+  - ${CXX} --version
+
+script:
+  - mkdir -p build && cd build
+  - cmake -DCMAKE_CXX_COMPILER=${CXX} ..
+  - make clean && make -k
+  - cd test
+  - ctest -V --output-on-failure
