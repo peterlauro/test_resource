@@ -1,17 +1,26 @@
 language: cpp
 os: linux
-dist: bionic
 
 matrix:
   include:
-   - compiler: gcc
+    - compiler: clang
+      dist: bionic
 
-   - compiler: clang
-
-before_script:
-  - ${CXX} --version
+    - compiler: gcc
+      dist: xenial
+      addons:
+        apt:
+          sources:
+            - sourceline: 'ppa:ubuntu-toolchain-r/test'
+          packages:
+            - g++-9
+      env:
+        - CXX=g++-9
+        - CXX_FOR_BUILD=g++-9
+        - CXXSTD=-std=c++17
 
 script:
+  - ${CXX} --version
   - mkdir -p build && cd build
   - cmake -DCMAKE_CXX_COMPILER=${CXX} ..
   - make clean && make -k

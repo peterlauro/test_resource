@@ -4,12 +4,30 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdarg>
+#include <cstddef>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <iomanip>
 #include <iostream>
-#include <list>
+
+#if defined(__clang__)
+#include <experimental/memory_resource>
+namespace std::pmr
+{
+  using std::experimental::pmr::memory_resource;
+  using std::experimental::pmr::polymorphic_allocator;
+  using std::experimental::pmr::new_delete_resource;
+
+  using std::experimental::pmr::get_default_resource;
+  using std::experimental::pmr::set_default_resource;
+}
+#else
 #include <memory_resource>
+#endif
+
 #include <mutex>
+#include <string_view>
 #include <type_traits>
 
 namespace stdx::pmr
@@ -203,7 +221,7 @@ namespace stdx::pmr
 
     template<std::size_t Align>
     using aligned_type = std::conditional_t<
-      Align <= max_natural_alignment,
+      Align <= max_natural_alignment || sizeof(aligned_header_base) % Align == 0U,
       aligned_header_base,
       aligned_header_with_additional_padding_base<checked_alignment(Align)>>;
 
@@ -599,7 +617,7 @@ namespace stdx::pmr
       {
         static constexpr std::size_t buffer_size = 4095U;
         char_type buffer[buffer_size + 1U] = { '\0' };
-        return 0 <= vsnprintf_s(buffer, buffer_size, format, args) ? buffer : char_type{};
+        return 0 <= vsnprintf(buffer, buffer_size, format, args) ? string_type(buffer) : string_type();
       }
     };
 
@@ -1232,12 +1250,12 @@ namespace stdx::pmr
       m_lastAllocatedAlignment.store(static_cast<long long>(Align), std::memory_order_relaxed);
 
       //initialize header padding + additional padding before the payload
-      std::memset(&header->m_object.m_padding,
+      memset(&header->m_object.m_padding,
         std::to_integer<unsigned char>(detail::padded_memory_byte),
         reinterpret_cast<std::byte*>(header + 1) - reinterpret_cast<std::byte*>(&header->m_object.m_padding));
 
       //initialize padding after the payload
-      std::memset(reinterpret_cast<std::byte*>(header + 1) + bytes,
+      memset(reinterpret_cast<std::byte*>(header + 1) + bytes,
         std::to_integer<unsigned char>(detail::padded_memory_byte),
         detail::padding_size);
 
@@ -1462,7 +1480,7 @@ namespace stdx::pmr
       m_bytesInUse.fetch_add(-static_cast<long long>(size), std::memory_order_relaxed);
 
       header->m_object.m_magic_number = detail::deallocated_memory_pattern;
-      std::memset(p, static_cast<int>(detail::scribbled_memory_byte), size);
+      memset(p, static_cast<int>(detail::scribbled_memory_byte), size);
 
       if (is_verbose())
       {
@@ -1472,8 +1490,8 @@ namespace stdx::pmr
       m_upstream->deallocate(header, detail::aligned_header_size_v<Align> + size + detail::padding_size, Align);
 
       // the deallocation via upstream may modify the magicnumber and data in user area
-      header->m_object.m_magic_number = detail::deallocated_memory_pattern;
-      std::memset(p, static_cast<int>(detail::scribbled_memory_byte), size);
+      //header->m_object.m_magic_number = detail::deallocated_memory_pattern;
+      //memset(p, static_cast<int>(detail::scribbled_memory_byte), size);
     }
 
     void do_deallocate(void* p, std::size_t bytes, std::size_t alignment) override
@@ -1886,11 +1904,7 @@ namespace stdx::pmr
   template<typename Stream>
   void detail::stream_test_resource_reporter<Stream>::do_report_log_msg(const char* format, va_list args)
   {
-    char buffer[4096U] = {'\0'};
-    if (0 <= vsnprintf_s(buffer, std::size(buffer), format, args))
-    {
-      m_stream << formater_type::msg2str(format, args);
-    }
+    m_stream << formater_type::msg2str(format, args);
   }
 
   /**
