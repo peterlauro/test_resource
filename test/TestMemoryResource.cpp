@@ -14,10 +14,20 @@
 //  GTEST
 #include <gtest/gtest.h>
 
+#if defined(__clang__)
+#include <experimental/deque>
+#include <experimental/string>
+namespace std::pmr
+{
+  using std::experimental::pmr::deque;
+  using std::experimental::pmr::string;
+}
+#else
 #include <deque>
-#include <filesystem>
-#include <string>
+#endif
+
 #include <fstream>
+#include <string>
 
 inline constexpr bool g_verbose = true;
 
@@ -28,10 +38,10 @@ class pstring_no_destructor
 
     pstring_no_destructor(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(static_cast<char *>(m_allocator.allocate_bytes(m_length, 1U)))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     [[nodiscard]]
@@ -85,10 +95,10 @@ public:
 
     pstring_inconsistent_alignment(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(static_cast<char *>(m_allocator.allocate_bytes(m_length, 1U)))
     {
-        std::strcpy(m_buffer, cstr);
+        strcpy(m_buffer, cstr);
     }
 
     ~pstring_inconsistent_alignment()
@@ -148,10 +158,10 @@ public:
 
     pstring_wrong_bytes_number(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     ~pstring_wrong_bytes_number()
@@ -210,15 +220,15 @@ public:
 
     pstring_correct_create_destroy(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strcpy(m_buffer, cstr);
     }
 
     ~pstring_correct_create_destroy()
     {
-        m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0);
+        m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
     }
 
     [[nodiscard]]
@@ -230,7 +240,7 @@ public:
     [[nodiscard]]
     std::string str() const
     {  // For sanity checks only.
-        return { m_buffer, m_length };
+        return { m_buffer, m_length};
     }
 
     [[nodiscard]]
@@ -249,16 +259,17 @@ TEST(StdX_MemoryResource_test_resource, create_destroy__correct)
 {
     // SUCCESS OF CREATE/DESTROY
     {
+        using namespace std::string_literals;
         const bool verbose = g_verbose;
         stdx::pmr::test_resource tpmr("stage4", verbose);
         tpmr.set_no_abort(true);
         std::size_t strlength = 0U;
         {
             const pstring_correct_create_destroy astring{ "foobar", &tpmr };
-            EXPECT_EQ(astring.str(), "foobar");
+            EXPECT_EQ(astring.str(), "foobar"s);
             strlength = astring.size();
         }
-            
+
         EXPECT_FALSE(tpmr.has_allocations());
         EXPECT_FALSE(tpmr.has_errors());
         EXPECT_EQ(tpmr.bytes_in_use(), 0LL);
@@ -277,7 +288,7 @@ TEST(StdX_MemoryResource_test_resource, double_deallocation)
         {
             const pstring_correct_create_destroy astring{ "foobar", &tpmr };
             //pstring_correct_create_destroy doesn't provide "suitable" copy constructor, with allocator
-            pstring_correct_create_destroy astring_copied{ astring};
+            const pstring_correct_create_destroy astring_copied{ astring};
             EXPECT_EQ(astring.str(), "foobar");
             EXPECT_EQ(astring_copied.str(), "foobar");
         } // destroy and deletes astring_copied (the buffer is cleared)
@@ -297,10 +308,10 @@ public:
 
     pstring_correct_copy_constructor(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     //copy constructor
@@ -309,7 +320,7 @@ public:
         , m_length(other.m_length)
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1))
     {
-        std::strncpy(m_buffer, other.m_buffer, m_length);
+        strncpy(m_buffer, other.m_buffer, m_length);
     }
 
     ~pstring_correct_copy_constructor()
@@ -357,7 +368,7 @@ TEST(StdX_MemoryResource_test_resource, copy_construction__correct)
 
             const pstring_correct_copy_constructor astring{ "foobar", &tpmr };
             //pstring_correct_create_destroy doesn't provide "suitable" copy constructor, with allocator
-            pstring_correct_copy_constructor astring_copied{ astring }; //string uses the default resource, dmpr
+            const pstring_correct_copy_constructor astring_copied{ astring }; //string uses the default resource, dmpr
             EXPECT_EQ(astring.str(), "foobar");
             EXPECT_EQ(astring_copied.str(), "foobar");
             strlength = astring.size();
@@ -385,10 +396,10 @@ public:
 
     pstring_wrong_assignment_operator(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     //copy constructor
@@ -397,7 +408,7 @@ public:
         , m_length(other.m_length)
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1))
     {
-        std::strncpy(m_buffer, other.m_buffer, m_length);
+        strncpy(m_buffer, other.m_buffer, m_length);
     }
 
     //wrong copy assignment operator
@@ -473,10 +484,10 @@ public:
 
     pstring_correct_assignment_operator(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     //copy constructor
@@ -485,7 +496,7 @@ public:
         , m_length(other.m_length)
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1))
     {
-        std::strncpy(m_buffer, other.m_buffer, m_length);
+        strncpy(m_buffer, other.m_buffer, m_length);
     }
 
     //copy assignment operator
@@ -494,7 +505,7 @@ public:
         char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
         m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
         m_buffer = buff;
-        std::strncpy(m_buffer, rhs.m_buffer, m_length);
+        strncpy(m_buffer, rhs.m_buffer, m_length);
         m_length = rhs.m_length;
         return *this;
     }
@@ -581,10 +592,10 @@ public:
 
     pstring_fixed_self_assignment(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     //copy constructor
@@ -593,7 +604,7 @@ public:
         , m_length(other.m_length)
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1))
     {
-        std::strncpy(m_buffer, other.m_buffer, m_length);
+        strncpy(m_buffer, other.m_buffer, m_length);
     }
 
     //copy assignment operator
@@ -604,7 +615,7 @@ public:
             char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
             m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
             m_buffer = buff;
-            std::strncpy(m_buffer, rhs.m_buffer, m_length);
+            strncpy(m_buffer, rhs.m_buffer, m_length);
             m_length = rhs.m_length;
         }
         return *this;
@@ -689,10 +700,10 @@ public:
 
     pstring_with_move_constructor(const char *cstr, allocator_type allocator = {})
         : m_allocator(allocator)
-        , m_length(std::strlen(cstr))
+        , m_length(strlen(cstr))
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1U))
     {
-        std::strncpy(m_buffer, cstr, m_length);
+        strncpy(m_buffer, cstr, m_length);
     }
 
     //copy constructor
@@ -701,7 +712,7 @@ public:
         , m_length(other.m_length)
         , m_buffer(m_allocator.allocate_object<char>(m_length + 1))
     {
-        std::strncpy(m_buffer, other.m_buffer, m_length);
+        strncpy(m_buffer, other.m_buffer, m_length);
     }
 
     //move constructor
@@ -723,7 +734,7 @@ public:
         else
         {
             m_buffer = nullptr;
-            std::strncpy(m_buffer, other.m_buffer, m_length);
+            strncpy(m_buffer, other.m_buffer, m_length);
         }
     }
 
@@ -735,7 +746,7 @@ public:
             char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
             m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
             m_buffer = buff;
-            std::strncpy(m_buffer, rhs.m_buffer, rhs.m_length);
+            strncpy(m_buffer, rhs.m_buffer, rhs.m_length);
             m_length = rhs.m_length;
         }
         return *this;
@@ -866,55 +877,55 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
 TEST(StdX_MemoryResource_aligned_header, size_and_alignment_verification)
 {
     // alignment 1
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<1U>, alignof(std::max_align_t));
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<1U>, stdx::pmr::detail::checked_alignment(1U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<1U>, sizeof(stdx::pmr::detail::header));
 
     // alignment 2
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<2U>, alignof(std::max_align_t));
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<2U>, stdx::pmr::detail::checked_alignment(2U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<2U>, sizeof(stdx::pmr::detail::header));
 
     // alignment 4
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<4U>, alignof(std::max_align_t));
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<4U>, stdx::pmr::detail::checked_alignment(4U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<4U>, sizeof(stdx::pmr::detail::header));
 
     // alignment 8
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<8U>, alignof(std::max_align_t));
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<8U>, stdx::pmr::detail::checked_alignment(8U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<8U>, sizeof(stdx::pmr::detail::header));
 
     // alignment 16
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<16U>, 16U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<16U>, stdx::pmr::detail::checked_alignment(16U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<16U>, 64U);
 
     // alignment 32
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<32U>, 32U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<32U>, stdx::pmr::detail::checked_alignment(32U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<32U>, 64U);
 
     // alignment 64
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<64U>, 64U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<64U>, stdx::pmr::detail::checked_alignment(64U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<64U>, 64U);
 
     // alignment 128
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<128U>, 128U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<128U>, stdx::pmr::detail::checked_alignment(128U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<128U>, 128U);
 
     // alignment 256
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<256U>, 256U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<256U>, stdx::pmr::detail::checked_alignment(256U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<256U>, 256U);
 
     // alignment 512
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<512U>, 512U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<512U>, stdx::pmr::detail::checked_alignment(512U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<512U>, 512U);
 
     // alignment 1024
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<1024U>, 1024U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<1024U>, stdx::pmr::detail::checked_alignment(1024U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<1024U>, 1024U);
 
     // alignment 2048
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<2048U>, 2048U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<2048U>, stdx::pmr::detail::checked_alignment(2048U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<2048U>, 2048U);
 
     // alignment 4096
-    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<4096U>, 4096U);
+    EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<4096U>, stdx::pmr::detail::checked_alignment(4096U));
     EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<4096U>, 4096U);
 }
 
@@ -947,10 +958,9 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload)
 TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_to_file)
 {
   const bool verbose = g_verbose;
-  std::filesystem::path p("test_file.log");
-  std::filesystem::remove(p);
+  const char* filename("test_file.log");
   {
-    std::ofstream ofs(p);
+    std::ofstream ofs(filename);
     stdx::pmr::file_test_resource_reporter_type file_reporter(ofs);
     stdx::pmr::test_resource dr("default", verbose, &file_reporter);
     dr.set_no_abort(true);
@@ -961,6 +971,4 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_
     }
     EXPECT_EQ(dr.bounds_errors(), 1LL);
   }
-
-  EXPECT_TRUE(std::filesystem::exists(p));
 }
