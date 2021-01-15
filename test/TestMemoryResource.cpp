@@ -1,15 +1,4 @@
-﻿//---------------------------------------------------------------------------------------
-//                         Copyright (c) Carl Zeiss Meditec AG
-//                               - All Rights Reserved -
-//
-//                     THIS IS UNPUBLISHED PROPRIETARY SOURCE CODE OF
-//                                  CARL ZEISS MEDITEC AG
-//
-//                       This copyright notice does not evidence any
-//                    actual or intended publication of such source code.
-//---------------------------------------------------------------------------------------
-
-#include "memory_resource.h"
+﻿#include "memory_resource.h"
 
 //  GTEST
 #include <gtest/gtest.h>
@@ -17,11 +6,6 @@
 #if defined(__clang__)
 #include <experimental/deque>
 #include <experimental/string>
-namespace std::pmr
-{
-  using std::experimental::pmr::deque;
-  using std::experimental::pmr::string;
-}
 #else
 #include <deque>
 #endif
@@ -848,8 +832,8 @@ TEST(StdX_MemoryResource_exception_test_loop, allocations_detector)
     const char *longstr = "A very very long string that allocates memory";
 
     stdx::pmr::exception_test_loop(tpmr,
-        [longstr](std::pmr::memory_resource& pmrp) {
-            std::pmr::deque<std::pmr::string> deq{ &pmrp };
+        [longstr](std_pmr::memory_resource& pmrp) {
+            std_pmr::deque<std_pmr::string> deq{ &pmrp };
             deq.emplace_back(longstr);
             deq.emplace_back(longstr);
             EXPECT_EQ(deq.size(), 2U);
@@ -861,7 +845,7 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
     const bool verbose = g_verbose;
     stdx::pmr::test_resource tr{ "object", verbose };
     tr.set_no_abort(true);
-    const std::pmr::string astring{
+    const std_pmr::string astring{
         "A very very long string that will hopefully allocate memory",
         &tr };
     stdx::pmr::test_resource dr{ "default", verbose };
@@ -869,7 +853,7 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
     const stdx::pmr::test_resource_monitor drm{ dr };
     {
         stdx::pmr::default_resource_guard drg{ &dr };
-        std::pmr::string string2{ astring, &tr };
+        std_pmr::string string2{ astring, &tr };
     }
     EXPECT_TRUE(drm.is_total_same());
 }
