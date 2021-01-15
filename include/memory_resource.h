@@ -13,17 +13,10 @@
 
 #if defined(__clang__)
 #include <experimental/memory_resource>
-namespace std::pmr
-{
-  using std::experimental::pmr::memory_resource;
-  using std::experimental::pmr::polymorphic_allocator;
-  using std::experimental::pmr::new_delete_resource;
-
-  using std::experimental::pmr::get_default_resource;
-  using std::experimental::pmr::set_default_resource;
-}
+  namespace std_pmr = std::experimental::pmr;
 #else
 #include <memory_resource>
+  namespace std_pmr = std::pmr;
 #endif
 
 #include <mutex>
@@ -42,9 +35,7 @@ namespace stdx::pmr
   class test_resource_reporter
   {
   public:
-    virtual ~test_resource_reporter() noexcept
-    {
-    }
+    virtual ~test_resource_reporter() noexcept = default;
 
     void report_allocation(const test_resource& tr)
     {
@@ -400,7 +391,7 @@ namespace stdx::pmr
        * \return the address of the allocated memory 'block'
        * \note the head pointer of the 'list' will be updated if the 'list of blocks' is initially empty
        */
-      block* add_block(long long index, std::pmr::memory_resource* resource)
+      block* add_block(long long index, std_pmr::memory_resource* resource)
       {
         auto* mblock = static_cast<block*>(resource->allocate(sizeof(block), alignof(block)));
 
@@ -433,7 +424,7 @@ namespace stdx::pmr
        * \brief Erases all memory blocks from the list with the given resource
        * \param resource the resource to be erased
        */
-      void clear(std::pmr::memory_resource* resource)
+      void clear(std_pmr::memory_resource* resource)
       {
         block* mblock = m_head;
         while (mblock)
@@ -449,9 +440,7 @@ namespace stdx::pmr
 
     class local_memory
     {
-      ~local_memory() = delete;
-
-      struct malloc_free_resource final : std::pmr::memory_resource
+      struct malloc_free_resource final : std_pmr::memory_resource
       {
         malloc_free_resource() noexcept = default;
 
@@ -496,46 +485,14 @@ namespace stdx::pmr
       };
 
     public:
-      static std::pmr::memory_resource* resource() noexcept
-      {
-        static malloc_free_resource instance;
-        return &instance;
-      }
-    };
+      ~local_memory() = delete;
 
-    class null_test_resource_reporter : public test_resource_reporter
-    {
-    public:
-      null_test_resource_reporter() noexcept = default;
-
-    private:
-      void do_report_allocation(const test_resource&) override
+      static std_pmr::memory_resource* resource() noexcept
       {
-      }
-
-      void do_report_deallocation(const test_resource&) override
-      {
-      }
-
-      void do_report_release(const test_resource&) override
-      {
-      }
-
-      void do_report_invalid_memory_block(
-        const test_resource&,
-        std::size_t,
-        std::size_t,
-        int,
-        int) override
-      {
-      }
-
-      void do_report_print(const test_resource&) override
-      {
-      }
-
-      void do_report_log_msg(const char*, va_list) override
-      {
+        using type = malloc_free_resource;
+        alignas(type) static std::uint8_t buffer[sizeof(type)];
+        static type* r = new (buffer) type;
+        return r;
       }
     };
 
@@ -656,15 +613,19 @@ namespace stdx::pmr
     [[nodiscard]]
     inline test_resource_reporter* _console_test_resource_reporter() noexcept
     {
-      static stream_test_resource_reporter<std::ostream> reporter(std::cout);
-      return &reporter;
+      using type = stream_test_resource_reporter<std::ostream>;
+      alignas(type) static std::uint8_t buffer[sizeof(type)];
+      static type* reporter = new (buffer) type(std::cout);
+      return reporter;
     }
 
     [[nodiscard]]
-    inline test_resource_reporter*& _default_test_resource_reporter() noexcept
+    inline std::atomic<test_resource_reporter*>& _default_test_resource_reporter() noexcept
     {
-      static test_resource_reporter* reporter = _console_test_resource_reporter();
-      return reporter;
+      using type = std::atomic<test_resource_reporter*>;
+      alignas(type) static std::uint8_t buffer[sizeof(type)];
+      static type* reporter = new (buffer) type(_console_test_resource_reporter());
+      return *reporter;
     }
   }
 
@@ -679,23 +640,62 @@ namespace stdx::pmr
   inline test_resource_reporter*
   null_test_resource_reporter() noexcept
   {
-    static detail::null_test_resource_reporter reporter;
-    return &reporter;
+    class type final : public test_resource_reporter
+    {
+    public:
+      type() noexcept = default;
+
+    private:
+      void do_report_allocation(const test_resource&) override
+      {
+      }
+
+      void do_report_deallocation(const test_resource&) override
+      {
+      }
+
+      void do_report_release(const test_resource&) override
+      {
+      }
+
+      void do_report_invalid_memory_block(
+        const test_resource&,
+        std::size_t,
+        std::size_t,
+        int,
+        int) override
+      {
+      }
+
+      void do_report_print(const test_resource&) override
+      {
+      }
+
+      void do_report_log_msg(const char*, va_list) override
+      {
+      }
+    };
+
+    alignas(type) static std::uint8_t buffer[sizeof(type)];
+    static type* reporter = new (buffer) type;
+    return reporter;
   }
 
   [[nodiscard]]
   inline test_resource_reporter*
   get_default_test_resource_reporter() noexcept
   {
-    return detail::_default_test_resource_reporter();
+    return detail::_default_test_resource_reporter().load();
   }
 
   inline test_resource_reporter*
   set_default_test_resource_reporter(test_resource_reporter* reporter = nullptr) noexcept
   {
-    auto* old_default = get_default_test_resource_reporter();
-    detail::_default_test_resource_reporter() = reporter ? reporter : console_test_resource_reporter();
-    return old_default;
+    if (!reporter)
+    {
+        reporter = console_test_resource_reporter();
+    }
+    return detail::_default_test_resource_reporter().exchange(reporter);
   }
 
   using file_test_resource_reporter_type = detail::stream_test_resource_reporter<std::ofstream>;
@@ -773,7 +773,7 @@ namespace stdx::pmr
    *      - testing (exception safety) behavior in case of memory allocation failure
    *        (when the resource throws) using the test_allocation_failure algorithm
    */
-  class test_resource final : public std::pmr::memory_resource
+  class test_resource final : public std_pmr::memory_resource
   {
     friend class test_resource_reporter;
 
@@ -784,7 +784,7 @@ namespace stdx::pmr
       : test_resource("", false, detail::local_memory::resource(), get_default_test_resource_reporter())
     {}
 
-    explicit test_resource(std::pmr::memory_resource* upstream)
+    explicit test_resource(std_pmr::memory_resource* upstream)
       : test_resource("", false, upstream, get_default_test_resource_reporter())
     {}
 
@@ -800,15 +800,15 @@ namespace stdx::pmr
       : test_resource("", verbose, detail::local_memory::resource(), reporter)
     {}
 
-    test_resource(std::string_view name, std::pmr::memory_resource* upstream)
+    test_resource(std::string_view name, std_pmr::memory_resource* upstream)
       : test_resource(name, false, upstream, get_default_test_resource_reporter())
     {}
 
-    test_resource(const char* name, std::pmr::memory_resource* upstream)
+    test_resource(const char* name, std_pmr::memory_resource* upstream)
       : test_resource(std::string_view(name), upstream)
     {}
 
-    test_resource(bool verbose, std::pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
+    test_resource(bool verbose, std_pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
       : test_resource("", verbose, upstream, reporter)
     {}
 
@@ -820,7 +820,7 @@ namespace stdx::pmr
       : test_resource(std::string_view(name), verbose, reporter)
     {}
 
-    test_resource(std::string_view name, bool verbose, std::pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
+    test_resource(std::string_view name, bool verbose, std_pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
       : m_name(name)
       , m_verboseFlag(verbose)
       , m_reporter(reporter)
@@ -830,7 +830,7 @@ namespace stdx::pmr
       m_list = new (m_upstream->allocate(sizeof(detail::test_resource_list))) detail::test_resource_list{};
     }
 
-    test_resource(const char* name, bool verbose, std::pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
+    test_resource(const char* name, bool verbose, std_pmr::memory_resource* upstream, test_resource_reporter* reporter = get_default_test_resource_reporter())
       : test_resource(std::string_view(name), verbose, upstream, reporter)
     {}
 
@@ -945,7 +945,7 @@ namespace stdx::pmr
      * \return pointer to the upstream memory_resource
      */
     [[nodiscard]]
-    std::pmr::memory_resource* upstream_resource() const noexcept
+    std_pmr::memory_resource* upstream_resource() const noexcept
     {
       return m_upstream;
     }
@@ -1229,6 +1229,7 @@ namespace stdx::pmr
     }
 
   private:
+    [[nodiscard]]
     const detail::test_resource_list* test_resource_list() const
     {
       return m_list;
@@ -1317,10 +1318,10 @@ namespace stdx::pmr
         }
       }
 
-      //if (!detail::is_power_of_two(alignment))
-      //{
-      //  throw test_resource_exception(this, bytes, alignment);
-      //}
+      if (!detail::is_power_of_two(alignment))
+      {
+        throw test_resource_exception(this, bytes, alignment);
+      }
 
       switch (alignment)
       {
@@ -1536,10 +1537,10 @@ namespace stdx::pmr
         }
       }
 
-      //if (!detail::is_power_of_two(alignment))
-      //{
-      //  throw test_resource_exception(this, bytes, alignment);
-      //}
+      if (!detail::is_power_of_two(alignment))
+      {
+        throw test_resource_exception(this, bytes, alignment);
+      }
 
       switch (alignment)
       {
@@ -1577,7 +1578,7 @@ namespace stdx::pmr
     }
 
     [[nodiscard]]
-    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override
+    bool do_is_equal(const std_pmr::memory_resource& other) const noexcept override
     {
       return this == &other;
     }
@@ -1614,10 +1615,10 @@ namespace stdx::pmr
 
     detail::test_resource_list* m_list{ nullptr };
 
-    test_resource_reporter* m_reporter;
+    test_resource_reporter* m_reporter{ nullptr };
 
     //upstream resource from which to allocate
-    std::pmr::memory_resource* m_upstream = std::pmr::get_default_resource();
+    std_pmr::memory_resource* m_upstream = std_pmr::get_default_resource();
   };
 
   /**
@@ -1628,11 +1629,11 @@ namespace stdx::pmr
   class [[maybe_unused]] default_resource_guard final
   {
   public:
-    explicit default_resource_guard(std::pmr::memory_resource* newDefault) noexcept
+    explicit default_resource_guard(std_pmr::memory_resource* newDefault) noexcept
     {
       if (newDefault)
       {
-        m_oldDefault = std::pmr::set_default_resource(newDefault);
+        m_oldDefault = std_pmr::set_default_resource(newDefault);
       }
     }
 
@@ -1643,11 +1644,11 @@ namespace stdx::pmr
     {
       // if m_oldDefault is nullPtr, the set_default_resource sets
       // a std::pmr::new_delete_resource as default one
-      std::pmr::set_default_resource(m_oldDefault);
+      std_pmr::set_default_resource(m_oldDefault);
     }
 
   private:
-    std::pmr::memory_resource* m_oldDefault{ nullptr };
+    std_pmr::memory_resource* m_oldDefault{ nullptr };
   };
 
   template<typename F>
@@ -1766,7 +1767,7 @@ namespace stdx::pmr
   {
     auto* payload = tr.last_deallocated_address();
     auto* head = get_header(payload, deallocatedAlignment);
-    const auto* allocator = static_cast<const std::pmr::memory_resource*>(&tr);
+    const auto* allocator = static_cast<const std_pmr::memory_resource*>(&tr);
 
     const auto magicNumber = head->m_magic_number;
     const auto numBytes = head->m_bytes;
@@ -2010,7 +2011,7 @@ namespace stdx::pmr
   // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0339r6.pdf
   // https://en.cppreference.com/w/cpp/memory/polymorphic_allocator
   template<typename T = std::byte>
-  class polymorphic_allocator : public std::pmr::polymorphic_allocator<T>
+  class polymorphic_allocator : public std_pmr::polymorphic_allocator<T>
   {
     template<typename>
     friend class stdx::pmr::polymorphic_allocator;
@@ -2020,7 +2021,7 @@ namespace stdx::pmr
 
     // simplification
     // just reuse the constructors of std::pmr::polymorphic_allocator<T>
-    using std::pmr::polymorphic_allocator<T>::polymorphic_allocator;
+    using std_pmr::polymorphic_allocator<T>::polymorphic_allocator;
 
     polymorphic_allocator& operator=(const polymorphic_allocator&) = delete;
 
