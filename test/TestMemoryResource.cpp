@@ -3,13 +3,7 @@
 //  GTEST
 #include <gtest/gtest.h>
 
-#if defined(__clang__)
-#include <experimental/deque>
-#include <experimental/string>
-#else
 #include <deque>
-#endif
-
 #include <fstream>
 #include <string>
 
@@ -832,8 +826,8 @@ TEST(StdX_MemoryResource_exception_test_loop, allocations_detector)
     const char *longstr = "A very very long string that allocates memory";
 
     stdx::pmr::exception_test_loop(tpmr,
-        [longstr](std_pmr::memory_resource& pmrp) {
-            std_pmr::deque<std_pmr::string> deq{ &pmrp };
+        [longstr](std::pmr::memory_resource& pmrp) {
+            std::pmr::deque<std::pmr::string> deq{ &pmrp };
             deq.emplace_back(longstr);
             deq.emplace_back(longstr);
             EXPECT_EQ(deq.size(), 2U);
@@ -845,7 +839,7 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
     const bool verbose = g_verbose;
     stdx::pmr::test_resource tr{ "object", verbose };
     tr.set_no_abort(true);
-    const std_pmr::string astring{
+    const std::pmr::string astring{
         "A very very long string that will hopefully allocate memory",
         &tr };
     stdx::pmr::test_resource dr{ "default", verbose };
@@ -853,7 +847,7 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
     const stdx::pmr::test_resource_monitor drm{ dr };
     {
         stdx::pmr::default_resource_guard drg{ &dr };
-        std_pmr::string string2{ astring, &tr };
+        std::pmr::string string2{ astring, &tr };
     }
     EXPECT_TRUE(drm.is_total_same());
 }
@@ -942,10 +936,10 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload)
 TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_to_file)
 {
   const bool verbose = g_verbose;
-  const char* filename("test_file.log");
   {
-    std::ofstream ofs(filename);
-    stdx::pmr::file_test_resource_reporter_type file_reporter(ofs);
+    const char* filename("test_file.log");
+    std::filesystem::remove(filename);
+    stdx::pmr::file_test_resource_reporter file_reporter(filename);
     stdx::pmr::test_resource dr("default", verbose, &file_reporter);
     dr.set_no_abort(true);
     {
@@ -954,5 +948,7 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_
       *ptr = 0x65; //write 'e' - overwrite the tail padding area
     }
     EXPECT_EQ(dr.bounds_errors(), 1LL);
+    EXPECT_TRUE(std::filesystem::exists(filename));
+    EXPECT_FALSE(std::filesystem::is_empty(filename));
   }
 }
