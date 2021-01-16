@@ -1,13 +1,23 @@
 language: cpp
 os: linux
+dist: bionic
 
 matrix:
   include:
     - compiler: clang
-      dist: bionic
+      addons:
+        apt:
+          sources:
+            - sourceline: 'ppa:ubuntu-toolchain-r/test'
+            - sourceline: 'deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
+              key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+            - g++-9
+            - clang-9
+      env:
+        - MATRIX_EVAL="CC=clang-9 && CXX=clang++-9"
 
     - compiler: gcc
-      dist: xenial
       addons:
         apt:
           sources:
@@ -15,12 +25,18 @@ matrix:
           packages:
             - g++-9
       env:
-        - CXX=g++-9
-        - CXX_FOR_BUILD=g++-9
-        - CXXSTD=-std=c++17
+        - MATRIX_EVAL="CC=gcc-9 && CXX=g++-9"
+
+before_install:
+  - eval "${MATRIX_EVAL}"
+
+install:
+  - echo ${CC}
+  - echo ${CXX}
+  - ${CXX} --version
+  - cmake --version
 
 script:
-  - ${CXX} --version
   - mkdir -p build && cd build
   - cmake -DCMAKE_CXX_COMPILER=${CXX} ..
   - make clean && make -k
