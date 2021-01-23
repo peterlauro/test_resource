@@ -590,17 +590,7 @@ namespace stdx::pmr
         : m_stream(os)
       {}
 
-    private:
-      using char_type = std::ostream::char_type;
-      using formater_type = report_formater<char_type>;
-      using string_type = formater_type::string_type;
-
-      [[nodiscard]]
-      virtual bool validate() const
-      {
-        return true;
-      }
-
+    protected:
       void do_report_allocation(const test_resource& tr) override;
       void do_report_deallocation(const test_resource& tr) override;
       void do_report_release(const test_resource& tr) override;
@@ -612,6 +602,11 @@ namespace stdx::pmr
         int overrunBy) override;
       void do_report_print(const test_resource& tr) override;
       void do_report_log_msg(const char* format, va_list args) override;
+
+    private:
+      using char_type = std::ostream::char_type;
+      using formater_type = report_formater<char_type>;
+      using string_type = formater_type::string_type;
 
       std::ostream& m_stream;
     };
@@ -638,6 +633,11 @@ namespace stdx::pmr
   class file_test_resource_reporter : public detail::stream_test_resource_reporter
   {
   public:
+    file_test_resource_reporter() noexcept
+      : stream_test_resource_reporter(m_fstream)
+    {
+    }
+
     explicit file_test_resource_reporter(
       const std::filesystem::path& filename,
       std::ios_base::openmode mode = std::ios_base::out)
@@ -646,9 +646,86 @@ namespace stdx::pmr
     {
     }
 
+    void open(const std::filesystem::path& filename,
+      std::ios_base::openmode mode = std::ios_base::out)
+    {
+      m_fstream.open(filename, mode);
+    }
+
+    void close()
+    {
+      m_fstream.close();
+    }
+
+    [[nodiscard]]
+    bool good() const
+    {
+      return m_fstream.good();
+    }
+
+  protected:
+    void do_report_allocation(const test_resource& tr) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_allocation(tr);
+      }
+    }
+
+    void do_report_deallocation(const test_resource& tr) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_deallocation(tr);
+      }
+    }
+
+    void do_report_release(const test_resource& tr) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_release(tr);
+      }
+    }
+
+    void do_report_invalid_memory_block(
+      const test_resource& tr,
+      std::size_t deallocatedBytes,
+      std::size_t deallocatedAlignment,
+      int underrunBy,
+      int overrunBy) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_invalid_memory_block(
+          tr,
+          deallocatedBytes,
+          deallocatedAlignment,
+          underrunBy,
+          overrunBy
+        );
+      }
+    }
+
+    void do_report_print(const test_resource& tr) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_print(tr);
+      }
+    }
+
+    void do_report_log_msg(const char* format, va_list args) override
+    {
+      if (validate())
+      {
+        stream_test_resource_reporter::do_report_log_msg(format, args);
+      }
+    }
+
   private:
     [[nodiscard]]
-    bool validate() const override
+    bool validate() const
     {
       return m_fstream.is_open();
     }
@@ -1725,11 +1802,6 @@ namespace stdx::pmr
 
   inline void detail::stream_test_resource_reporter::do_report_allocation(const test_resource& tr)
   {
-    if (!validate())
-    {
-      return;
-    }
-
     m_stream << "test_resource";
 
     if (!tr.name().empty())
@@ -1757,11 +1829,6 @@ namespace stdx::pmr
 
   inline void detail::stream_test_resource_reporter::do_report_deallocation(const test_resource& tr)
   {
-    if (!validate())
-    {
-      return;
-    }
-
     m_stream << "test_resource";
 
     if (!tr.name().empty())
@@ -1794,11 +1861,6 @@ namespace stdx::pmr
     int underrunBy,
     int overrunBy)
   {
-    if (!validate())
-    {
-      return;
-    }
-
     auto* payload = tr.last_deallocated_address();
     auto* head = get_header(payload, deallocatedAlignment);
     const auto* allocator = static_cast<const std::pmr::memory_resource*>(&tr);
@@ -1873,7 +1935,7 @@ namespace stdx::pmr
 
   inline void detail::stream_test_resource_reporter::do_report_release(const test_resource& tr)
   {
-    if (tr.has_allocations() && validate())
+    if (tr.has_allocations())
     {
       m_stream << "MEMORY_LEAK";
       if (!tr.name().empty())
@@ -1893,11 +1955,6 @@ namespace stdx::pmr
 
   inline void detail::stream_test_resource_reporter::do_report_print(const test_resource& tr)
   {
-    if (!validate())
-    {
-      return;
-    }
-
     m_stream <<
       "\n=================================================="
       "\n                TEST RESOURCE " << (!tr.name().empty() ? string_type(tr.name()) + " STATE" : "STATE") <<
@@ -1941,10 +1998,7 @@ namespace stdx::pmr
 
   inline void detail::stream_test_resource_reporter::do_report_log_msg(const char* format, va_list args)
   {
-    if (validate())
-    {
-      m_stream << formater_type::msg2str(format, args);
-    }
+    m_stream << formater_type::msg2str(format, args);
   }
 
   /**
