@@ -951,3 +951,45 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_
   }
   EXPECT_TRUE(std::filesystem::remove(filename));
 }
+
+TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_to_closed_file)
+{
+  const bool verbose = g_verbose;
+  const char* filename("test_file.log");
+  {
+    std::filesystem::remove(filename);
+    stdx::pmr::file_test_resource_reporter file_reporter(filename);
+    stdx::pmr::test_resource dr("default", verbose, &file_reporter);
+    file_reporter.close();
+    dr.set_no_abort(true);
+    {
+      pstring_correct astring{ "foobar", &dr };
+      auto* ptr = astring.get_buffer() + (astring.size() + 3U);
+      *ptr = 0x65; //write 'e' - overwrite the tail padding area
+    }
+    EXPECT_EQ(dr.bounds_errors(), 1LL);
+    EXPECT_TRUE(std::filesystem::exists(filename));
+    EXPECT_TRUE(std::filesystem::is_empty(filename));
+  }
+  EXPECT_TRUE(std::filesystem::remove(filename));
+}
+
+TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload__output_to_nonopen_file_reporter)
+{
+  const bool verbose = g_verbose;
+  const char* filename("test_file.log");
+  {
+    std::filesystem::remove(filename);
+    stdx::pmr::file_test_resource_reporter file_reporter;
+    stdx::pmr::test_resource dr("default", verbose, &file_reporter);
+    dr.set_no_abort(true);
+    {
+      pstring_correct astring{ "foobar", &dr };
+      auto* ptr = astring.get_buffer() + (astring.size() + 3U);
+      *ptr = 0x65; //write 'e' - overwrite the tail padding area
+    }
+    EXPECT_EQ(dr.bounds_errors(), 1LL);
+    EXPECT_FALSE(std::filesystem::exists(filename));
+  }
+  EXPECT_FALSE(std::filesystem::remove(filename));
+}
