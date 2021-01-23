@@ -2,6 +2,7 @@ set(TARGET_TESTS_NAME MemoryResourceTests)
 
 set(TARGET_TESTS_SOURCES
     main.cpp
+    TestAllocation.cpp
     TestMemoryResource.cpp
     )
 

@@ -438,6 +438,12 @@ namespace stdx::pmr
       {
         malloc_free_resource() noexcept = default;
 
+        [[nodiscard]]
+        std::pmr::memory_resource* upstream_resource() const noexcept
+        {
+          return nullptr;
+        }
+
       private:
         [[nodiscard]]
         void* do_allocate(std::size_t bytes, [[maybe_unused]] std::size_t alignment) override
@@ -483,6 +489,10 @@ namespace stdx::pmr
 
       static std::pmr::memory_resource* resource() noexcept
       {
+        // immortalize the instance of malloc_free_resource type
+        // the instance 'r' is never destructed;
+        // the memory space where r is placed is deallocated,
+        // when main function is finished
         using type = malloc_free_resource;
         alignas(type) static std::uint8_t buffer[sizeof(type)];
         static type* r = new (buffer) type;
@@ -693,6 +703,7 @@ namespace stdx::pmr
       }
     };
 
+    // immortalize -> no destructor called on top of reporter
     alignas(type) static std::uint8_t buffer[sizeof(type)];
     static type* reporter = new (buffer) type;
     return reporter;
