@@ -611,12 +611,12 @@ namespace stdx::pmr
       std::ostream& m_stream;
     };
 
+    template<typename StreamReporter>
     [[nodiscard]]
-    inline test_resource_reporter* _console_test_resource_reporter() noexcept
+    test_resource_reporter* _console_test_resource_reporter() noexcept
     {
-      using type = stream_test_resource_reporter;
-      alignas(type) static std::uint8_t buffer[sizeof(type)];
-      static type* reporter = new (buffer) type(std::cout);
+      alignas(StreamReporter) static std::uint8_t buffer[sizeof(StreamReporter)];
+      static auto* reporter = new (buffer) StreamReporter(std::cout);
       return reporter;
     }
 
@@ -625,119 +625,130 @@ namespace stdx::pmr
     {
       using type = std::atomic<test_resource_reporter*>;
       alignas(type) static std::uint8_t buffer[sizeof(type)];
-      static type* reporter = new (buffer) type(_console_test_resource_reporter());
+      static type* reporter = new (buffer) type(_console_test_resource_reporter<stream_test_resource_reporter>());
       return *reporter;
     }
+
+    template<
+      typename StreamReporter,
+      typename = std::enable_if_t<
+        std::is_base_of_v<test_resource_reporter, std::decay_t<StreamReporter>>>
+    >
+    class file_reporter : public StreamReporter
+    {
+    public:
+      file_reporter() noexcept
+        : stream_test_resource_reporter(m_fstream)
+      {
+      }
+
+      explicit file_reporter(
+        const std::filesystem::path& filename,
+        std::ios_base::openmode mode = std::ios_base::out)
+        : stream_test_resource_reporter(m_fstream)
+        , m_fstream(filename, mode)
+      {
+      }
+
+      void open(const std::filesystem::path& filename,
+        std::ios_base::openmode mode = std::ios_base::out)
+      {
+        m_fstream.open(filename, mode);
+      }
+
+      void close()
+      {
+        m_fstream.close();
+      }
+
+      [[nodiscard]]
+      bool good() const
+      {
+        return m_fstream.good();
+      }
+
+    protected:
+      void do_report_allocation(const test_resource& tr) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_allocation(tr);
+        }
+      }
+
+      void do_report_deallocation(const test_resource& tr) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_deallocation(tr);
+        }
+      }
+
+      void do_report_release(const test_resource& tr) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_release(tr);
+        }
+      }
+
+      void do_report_invalid_memory_block(
+        const test_resource& tr,
+        std::size_t deallocatedBytes,
+        std::size_t deallocatedAlignment,
+        int underrunBy,
+        int overrunBy) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_invalid_memory_block(
+            tr,
+            deallocatedBytes,
+            deallocatedAlignment,
+            underrunBy,
+            overrunBy
+          );
+        }
+      }
+
+      void do_report_print(const test_resource& tr) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_print(tr);
+        }
+      }
+
+      void do_report_log_msg(const char* format, va_list args) override
+      {
+        if (validate())
+        {
+          stream_test_resource_reporter::do_report_log_msg(format, args);
+        }
+      }
+
+    private:
+      [[nodiscard]]
+      bool validate() const
+      {
+        return m_fstream.is_open();
+      }
+
+      std::ofstream m_fstream;
+    };
   }
 
-  class file_test_resource_reporter : public detail::stream_test_resource_reporter
-  {
-  public:
-    file_test_resource_reporter() noexcept
-      : stream_test_resource_reporter(m_fstream)
-    {
-    }
+  using file_test_resource_reporter = detail::file_reporter<detail::stream_test_resource_reporter>;
 
-    explicit file_test_resource_reporter(
-      const std::filesystem::path& filename,
-      std::ios_base::openmode mode = std::ios_base::out)
-      : stream_test_resource_reporter(m_fstream)
-      , m_fstream(filename, mode)
-    {
-    }
-
-    void open(const std::filesystem::path& filename,
-      std::ios_base::openmode mode = std::ios_base::out)
-    {
-      m_fstream.open(filename, mode);
-    }
-
-    void close()
-    {
-      m_fstream.close();
-    }
-
-    [[nodiscard]]
-    bool good() const
-    {
-      return m_fstream.good();
-    }
-
-  protected:
-    void do_report_allocation(const test_resource& tr) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_allocation(tr);
-      }
-    }
-
-    void do_report_deallocation(const test_resource& tr) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_deallocation(tr);
-      }
-    }
-
-    void do_report_release(const test_resource& tr) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_release(tr);
-      }
-    }
-
-    void do_report_invalid_memory_block(
-      const test_resource& tr,
-      std::size_t deallocatedBytes,
-      std::size_t deallocatedAlignment,
-      int underrunBy,
-      int overrunBy) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_invalid_memory_block(
-          tr,
-          deallocatedBytes,
-          deallocatedAlignment,
-          underrunBy,
-          overrunBy
-        );
-      }
-    }
-
-    void do_report_print(const test_resource& tr) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_print(tr);
-      }
-    }
-
-    void do_report_log_msg(const char* format, va_list args) override
-    {
-      if (validate())
-      {
-        stream_test_resource_reporter::do_report_log_msg(format, args);
-      }
-    }
-
-  private:
-    [[nodiscard]]
-    bool validate() const
-    {
-      return m_fstream.is_open();
-    }
-
-    std::ofstream m_fstream;
-  };
-
+  template<typename StreamReporter = detail::stream_test_resource_reporter,
+    typename = std::enable_if_t<
+      std::is_base_of_v<test_resource_reporter, std::decay_t<StreamReporter>>>
+  >
   [[nodiscard]]
-  inline decltype(auto)
+  decltype(auto)
   console_test_resource_reporter() noexcept
   {
-    return detail::_console_test_resource_reporter();
+    return detail::_console_test_resource_reporter<StreamReporter>();
   }
 
   [[nodiscard]]
@@ -1784,7 +1795,8 @@ namespace stdx::pmr
 
         if (tr.is_verbose())
         {
-          tr.reporter()->report_log_msg("  *** test_resource_exception: alloc limit = %lld, last alloc size = %zu, align = %zu ***\n",
+          tr.reporter()->report_log_msg(
+            "  *** test_resource_exception: alloc limit = %lld, last alloc size = %zu, align = %zu ***\n",
             exceptionCounter,
             e.size(),
             e.alignment());
@@ -1916,7 +1928,9 @@ namespace stdx::pmr
           << formater_type::addr2str(payload) << ". ***\n";
 
         m_stream << "Pad area before user segment:\n";
-        m_stream << formater_type::mem2str(&head->m_padding, static_cast<std::byte*>(payload) - reinterpret_cast<std::byte*>(&head->m_padding));
+        m_stream << formater_type::mem2str(
+          &head->m_padding,
+          static_cast<std::byte*>(payload) - reinterpret_cast<std::byte*>(&head->m_padding));
       }
       if (overrunBy)
       {
@@ -1928,7 +1942,8 @@ namespace stdx::pmr
       }
     }
 
-    m_stream << "Header + Padding:\n" << formater_type::mem2str(head, static_cast<std::byte*>(payload) - reinterpret_cast<std::byte*>(head));
+    m_stream << "Header + Padding:\n"
+      << formater_type::mem2str(head, static_cast<std::byte*>(payload) - reinterpret_cast<std::byte*>(head));
     //let print 64 bytes when the header is "corrupted"
     m_stream << "User segment:\n" << formater_type::mem2str(payload, std::min<std::size_t>(64U, numBytes));
   }
@@ -1956,9 +1971,9 @@ namespace stdx::pmr
   inline void detail::stream_test_resource_reporter::do_report_print(const test_resource& tr)
   {
     m_stream <<
-      "\n=================================================="
-      "\n                TEST RESOURCE " << (!tr.name().empty() ? string_type(tr.name()) + " STATE" : "STATE") <<
-      "\n--------------------------------------------------";
+      "\n======================================================"
+      "\n  TEST RESOURCE " << (!tr.name().empty() ? string_type(tr.name()) + " STATE" : "STATE") <<
+      "\n------------------------------------------------------";
 
     const auto prev_flags = m_stream.flags();
     const auto prev_width = m_stream.width();
