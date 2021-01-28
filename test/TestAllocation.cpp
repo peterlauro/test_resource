@@ -110,17 +110,32 @@ struct BaseEvent
 
   virtual ~BaseEvent() noexcept = default;
 
+  /**
+   * \brief the Example of immortalization of resources
+   *        the destructor of resources is not called automatically
+   *        when the main function is finished, the memory occupied
+   *        by resource objects is deallocated via destruction of buffers.
+   *        However the memory blocks allocated by these resources are not
+   *        deallocated automatically and the destructors on resources
+   *        need to be invoked manually
+   * \note  have a look at the function destruct_memory_resource()
+   * \return pointer to memory_resource
+   */
   static std::pmr::memory_resource* get_memory_resource()
   {
     static const bool verbose = g_verbose;
 
+    // the cascade of memory_resources
+    //the 1sth resource
     alignas(stdx::pmr::test_resource) static std::uint8_t buffer_tr_default[sizeof(stdx::pmr::test_resource)];
     static auto* tr_default = new (buffer_tr_default) stdx::pmr::test_resource("BaseEvent: default_pool", verbose);
     tr_default->set_no_abort(true);
 
+    //the 2nd
     alignas(std::pmr::synchronized_pool_resource) static std::uint8_t buffer_sync_pool[sizeof(std::pmr::synchronized_pool_resource)];
     static auto* sync_pool = new (buffer_sync_pool) std::pmr::synchronized_pool_resource(std::pmr::pool_options{ 0U, 4096U }, tr_default);
 
+    //the 3rd
     alignas(stdx::pmr::test_resource) static std::uint8_t buffer_resource[sizeof(stdx::pmr::test_resource)];
     static auto* resource = new (buffer_resource) stdx::pmr::test_resource("BaseEvent: sync_pool", verbose, sync_pool);
     resource->set_no_abort(true);
@@ -128,7 +143,9 @@ struct BaseEvent
     return resource;
   }
 
-  // static allocation; the resources are destructed after the main function is finished
+  // static allocation
+  // the resources are destructed and deallocated when the main function
+  // is finished automatically
   //static std::pmr::memory_resource* get_memory_resource()
   //{
   //  static const bool verbose = g_verbose;
@@ -141,6 +158,18 @@ struct BaseEvent
   //  return &resource;
   //}
 
+  /**
+   * \brief Continuation of the Example of immortalization of resources;
+   *        The kind of indication whether memory_resource object needs
+   *        to be destructed is the definition of method release() by
+   *        the corresponding memory_resource type (not all STD memory_resource types
+   *        implement this method):
+   *        https://en.cppreference.com/w/cpp/memory/unsynchronized_pool_resource/release
+   *        https://en.cppreference.com/w/cpp/memory/synchronized_pool_resource/release
+   *        https://en.cppreference.com/w/cpp/memory/monotonic_buffer_resource/release
+   * \note  the function needs to be invoked before the end of main function
+   *        to destruct memory resources
+   */
   static void destruct_memory_resource()
   {
     auto* resource = dynamic_cast<stdx::pmr::test_resource*>(get_memory_resource());
@@ -150,6 +179,8 @@ struct BaseEvent
     auto* tr_default = dynamic_cast<stdx::pmr::test_resource*>(sync_pool->upstream_resource());
     ASSERT_TRUE(tr_default != nullptr);
 
+    // the order how cascade of resources is destructed:
+    // the last created resource (the 3rd) needs to be destructed as the first one
     std::destroy_at(resource);
     std::destroy_at(sync_pool);
     std::destroy_at(tr_default);
