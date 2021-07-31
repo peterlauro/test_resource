@@ -852,21 +852,23 @@ TEST(StdX_MemoryResource_default_resource_guard, with_test_resource_monitor)
 
 TEST(StdX_MemoryResource_aligned_header, size_and_alignment_verification)
 {
-  // alignment 1
+  static_assert(sizeof(stdx::pmr::detail::aligned_header_base) == 64U);
+
+    // alignment 1
   EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<1U>, stdx::pmr::detail::checked_alignment(1U));
-  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<1U>, sizeof(stdx::pmr::detail::header));
+  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<1U>, 64U);
 
   // alignment 2
   EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<2U>, stdx::pmr::detail::checked_alignment(2U));
-  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<2U>, sizeof(stdx::pmr::detail::header));
+  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<2U>, 64U);
 
   // alignment 4
   EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<4U>, stdx::pmr::detail::checked_alignment(4U));
-  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<4U>, sizeof(stdx::pmr::detail::header));
+  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<4U>, 64U);
 
   // alignment 8
   EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<8U>, stdx::pmr::detail::checked_alignment(8U));
-  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<8U>, sizeof(stdx::pmr::detail::header));
+  EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<8U>, 64U);
 
   // alignment 16
   EXPECT_EQ(stdx::pmr::detail::aligned_header_align_v<16U>, stdx::pmr::detail::checked_alignment(16U));
