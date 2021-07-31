@@ -97,7 +97,7 @@ namespace stdx::pmr
     virtual void do_report_log_msg(const char* format, va_list args) = 0;
   };
 
-  // Proposal P1160R1 - maybe part of C++23
+  // Proposal P1160R1
   // Add Test Polymorphic Memory Resource to the Standard Library
   // https://github.com/bloomberg/p1160
   // https://www.youtube.com/watch?v=48oAZqlyx_g&feature=youtu.be
@@ -158,6 +158,7 @@ namespace stdx::pmr
     //  | HEADER + PADDING + [additional padding] | USER SEGMENT | PADDING |
     //  --------------------------------------------------------------------
 
+    // max_natural_alignment on 32bits OS : 8B; on 64 bits OS : 16B
     inline constexpr std::size_t max_natural_alignment = alignof(std::max_align_t);
     // size of the padding before and after the user segment
     inline constexpr std::size_t padding_size = max_natural_alignment;
@@ -182,17 +183,31 @@ namespace stdx::pmr
                                      // end of the struct
     };
 
-    struct aligned_header_base
+    // let the size of aligned_header_base structure be always 64B (on 32 and 64 bits OS)
+    template<typename T, typename = void>
+    struct aligned_header_base_hlp;
+
+    template<typename T>
+    struct aligned_header_base_hlp<T, std::void_t<std::enable_if_t<sizeof(T) == 64U>>>
     {
-      header m_object;
+        T m_object;
     };
+
+    template<typename T>
+    struct aligned_header_base_hlp < T, std::void_t<std::enable_if_t<sizeof(T) < 64U > >>
+    {
+        T m_object;
+        std::byte _1[64U - sizeof(T)];
+    };
+
+    using aligned_header_base = aligned_header_base_hlp<header>;
 
     // to suppress MSVC warning C4324:
     // structure was padded due to alignment specifier
     template<std::size_t Align>
     struct aligned_header_with_additional_padding_base : aligned_header_base
     {
-      std::byte _[Align - (sizeof(aligned_header_base) % Align)];
+        std::byte _2[Align - sizeof(aligned_header_base)] = {};
     };
 
     constexpr std::size_t checked_alignment(std::size_t alignment) noexcept
@@ -206,9 +221,9 @@ namespace stdx::pmr
 
     template<std::size_t Align>
     using aligned_type = std::conditional_t<
-      Align <= max_natural_alignment || sizeof(aligned_header_base) % Align == 0U,
-      aligned_header_base,
-      aligned_header_with_additional_padding_base<checked_alignment(Align)>>;
+        Align <= sizeof(aligned_header_base),
+        aligned_header_base,
+        aligned_header_with_additional_padding_base<checked_alignment(Align)>>;
 
     template<>
     struct alignas(checked_alignment(1U)) aligned_header<1U> : aligned_type<1U>
