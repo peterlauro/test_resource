@@ -205,7 +205,7 @@ public:
 
   ~pstring_correct_create_destroy()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -302,7 +302,7 @@ public:
 
   ~pstring_correct_copy_constructor()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -397,7 +397,7 @@ public:
 
   ~pstring_wrong_assignment_operator()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -488,7 +488,7 @@ public:
 
   ~pstring_correct_assignment_operator()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -589,7 +589,7 @@ public:
     if (this != std::addressof(rhs))
     {
       char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
-      m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
+      m_allocator.deallocate_object(m_buffer, m_length + 1U); //deallocate actual buffer
       m_buffer = buff;
       strncpy(m_buffer, rhs.m_buffer, m_length);
       m_length = rhs.m_length;
@@ -599,7 +599,7 @@ public:
 
   ~pstring_fixed_self_assignment()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -701,17 +701,18 @@ public:
     : m_allocator(allocator) //don't propagate other allocator on extended move constructor
     , m_length(other.m_length)
   {
-    if (m_allocator == other.m_allocator)
-    {
-      m_buffer = other.m_buffer;
+      if (m_allocator == other.m_allocator)
+      {
+          m_buffer = other.m_buffer;
+      }
+      else
+      {
+          m_buffer = m_allocator.allocate_object<char>(m_length + 1U); //create new buffer
+          strcpy(m_buffer, other.m_buffer);
+          other.m_allocator.deallocate_object(other.m_buffer, m_length + 1U);
+      }
       other.m_length = static_cast<std::size_t>(-1);
       other.m_buffer = nullptr;
-    }
-    else
-    {
-      m_buffer = nullptr;
-      strncpy(m_buffer, other.m_buffer, m_length);
-    }
   }
 
   //copy assignment operator
@@ -720,7 +721,7 @@ public:
     if (this != std::addressof(rhs))
     {
       char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
-      m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
+      m_allocator.deallocate_object(m_buffer, m_length + 1U); //deallocate actual buffer
       m_buffer = buff;
       strncpy(m_buffer, rhs.m_buffer, rhs.m_length);
       m_length = rhs.m_length;
@@ -744,7 +745,7 @@ public:
 
   ~pstring_with_move_constructor()
   {
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U);
+    m_allocator.deallocate_object(m_buffer, m_length + 1U);
   }
 
   [[nodiscard]]
@@ -814,6 +815,28 @@ TEST(StdX_MemoryResource_test_resource, move_constructor__correct)
     EXPECT_TRUE(trm.is_total_same());
     EXPECT_TRUE(drm.is_total_same()); //no copy constructor was called
   }
+}
+
+TEST(StdX_MemoryResource_test_resource, copy_construction__empty_string)
+{
+    {
+        const bool verbose = g_verbose;
+        stdx::pmr::test_resource tr{ "object", verbose };
+        stdx::pmr::test_resource_monitor trm{ tr };
+        tr.set_no_abort(true);
+        stdx::pmr::test_resource dr{ "default", verbose };
+        stdx::pmr::test_resource_monitor drm{ dr };
+        stdx::pmr::default_resource_guard drg{ &dr };
+        {
+            pstring_with_move_constructor astring{ "", &tr };
+            EXPECT_TRUE(trm.is_total_up());
+            EXPECT_EQ(trm.delta_blocks_in_use(), 1LL);
+            trm.reset();
+            pstring_with_move_constructor bstring{ astring };
+        }
+        EXPECT_TRUE(trm.is_total_same());
+        EXPECT_FALSE(drm.is_total_same()); //copy constructor was called
+    }
 }
 
 TEST(StdX_MemoryResource_exception_test_loop, allocations_detector)
