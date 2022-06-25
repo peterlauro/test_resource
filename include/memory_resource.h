@@ -183,24 +183,21 @@ namespace stdx::pmr
                                      // end of the struct
     };
 
-    // let the size of aligned_header_base structure be always 64B (on 32 and 64 bits OS)
+    // let make the size of header structure be always 64B (on 32 and 64 bits OS)
     template<typename T, typename = void>
-    struct aligned_header_base_hlp;
-
-    template<typename T>
-    struct aligned_header_base_hlp<T, std::void_t<std::enable_if_t<sizeof(T) == 64U>>>
+    struct aligned_header_base_helper
     {
         T m_object;
     };
 
     template<typename T>
-    struct aligned_header_base_hlp < T, std::void_t<std::enable_if_t<sizeof(T) < 64U > >>
+    struct aligned_header_base_helper<T, std::void_t<std::enable_if_t<sizeof(T) < 64U>>>
     {
         T m_object;
         std::byte _1[64U - sizeof(T)];
     };
 
-    using aligned_header_base = aligned_header_base_hlp<header>;
+    using aligned_header_base = aligned_header_base_helper<header>;
 
     // to suppress MSVC warning C4324:
     // structure was padded due to alignment specifier
@@ -220,73 +217,73 @@ namespace stdx::pmr
     struct aligned_header;
 
     template<std::size_t Align>
-    using aligned_type = std::conditional_t<
+    using base_type = std::conditional_t<
         Align <= sizeof(aligned_header_base),
         aligned_header_base,
         aligned_header_with_additional_padding_base<checked_alignment(Align)>>;
 
     template<>
-    struct alignas(checked_alignment(1U)) aligned_header<1U> : aligned_type<1U>
+    struct alignas(checked_alignment(1U)) aligned_header<1U> : base_type<1U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(2U)) aligned_header<2U> : aligned_type<2U>
+    struct alignas(checked_alignment(2U)) aligned_header<2U> : base_type<2U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(4U)) aligned_header<4U> : aligned_type<4U>
+    struct alignas(checked_alignment(4U)) aligned_header<4U> : base_type<4U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(8U)) aligned_header<8U> : aligned_type<8U>
+    struct alignas(checked_alignment(8U)) aligned_header<8U> : base_type<8U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(16U)) aligned_header<16U> : aligned_type<16U>
+    struct alignas(checked_alignment(16U)) aligned_header<16U> : base_type<16U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(32U)) aligned_header<32U> : aligned_type<32U>
+    struct alignas(checked_alignment(32U)) aligned_header<32U> : base_type<32U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(64U)) aligned_header<64U> : aligned_type<64U>
+    struct alignas(checked_alignment(64U)) aligned_header<64U> : base_type<64U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(128U)) aligned_header<128U> : aligned_type<128U>
+    struct alignas(checked_alignment(128U)) aligned_header<128U> : base_type<128U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(256U)) aligned_header<256U> : aligned_type<256U>
+    struct alignas(checked_alignment(256U)) aligned_header<256U> : base_type<256U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(512U)) aligned_header<512U> : aligned_type<512U>
+    struct alignas(checked_alignment(512U)) aligned_header<512U> : base_type<512U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(1024U)) aligned_header<1024U> : aligned_type<1024U>
+    struct alignas(checked_alignment(1024U)) aligned_header<1024U> : base_type<1024U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(2048U)) aligned_header<2048U> : aligned_type<2048U>
+    struct alignas(checked_alignment(2048U)) aligned_header<2048U> : base_type<2048U>
     {
     };
 
     template<>
-    struct alignas(checked_alignment(4096U)) aligned_header<4096U> : aligned_type<4096U>
+    struct alignas(checked_alignment(4096U)) aligned_header<4096U> : base_type<4096U>
     {
     };
 
@@ -347,8 +344,9 @@ namespace stdx::pmr
       return aligned_header_size ? reinterpret_cast<header*>(reinterpret_cast<std::intptr_t>(p) - aligned_header_size) : nullptr;
     }
 
-    // intrusive list of memory blocks
-    struct test_resource_list
+    // Stores a head 'block' and a tail 'block' for list
+    // manipulation
+    struct test_resource_list // intrusive list of memory blocks
     {
       block* m_head = nullptr;  // address of first block in list (or 'nullptr')
       block* m_tail = nullptr;  // address of last block in list (or 'nullptr')
@@ -431,7 +429,7 @@ namespace stdx::pmr
 
       /**
        * \brief Erases all memory blocks from the list with the given resource
-       * \param resource the resource to be erased
+       * \param resource pointer on the resource to be erased
        */
       void clear(std::pmr::memory_resource* resource)
       {
@@ -463,6 +461,11 @@ namespace stdx::pmr
         [[nodiscard]]
         void* do_allocate(std::size_t bytes, [[maybe_unused]] std::size_t alignment) override
         {
+          // C++ standard: requested size shall be a multiple of alignment
+          const auto div = bytes / alignment;
+          const auto rem = bytes - div * alignment;
+          bytes = rem == 0U ? bytes : (div + 1U) * alignment;
+
 #ifdef _MSC_VER
           // Windows-specific API:
           void* p = ::_aligned_malloc(bytes, alignment);
@@ -1447,6 +1450,7 @@ namespace stdx::pmr
         }
       }
 
+      // alignment has to be power of two
       if (!detail::is_power_of_two(alignment))
       {
         throw test_resource_exception(this, bytes, alignment);
@@ -1666,6 +1670,7 @@ namespace stdx::pmr
         }
       }
 
+      // alignment has to be power of two
       if (!detail::is_power_of_two(alignment))
       {
         throw test_resource_exception(this, bytes, alignment);
@@ -2145,8 +2150,6 @@ namespace stdx::pmr
     // simplification
     // just reuse the constructors of std::pmr::polymorphic_allocator<T>
     using std::pmr::polymorphic_allocator<T>::polymorphic_allocator;
-
-    polymorphic_allocator& operator=(const polymorphic_allocator&) = delete;
 
     /**
      * \brief Allocates nbytes bytes of storage at specified alignment alignment using

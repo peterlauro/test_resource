@@ -45,7 +45,11 @@ private:
   char*           m_buffer;
 };
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_destruction__no_destructor)
+#else
 TEST(StdX_MemoryResource_test_resource, destruction__no_destructor)
+#endif
 {
   // MEMORY LEAK DETECTION
   {
@@ -107,7 +111,11 @@ private:
   char*           m_buffer;
 };
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_destruction__inconsistent_alignment)
+#else
 TEST(StdX_MemoryResource_test_resource, destruction__inconsistent_alignment)
+#endif
 {
   // WRONG ALIGNMENT AND BUFFER OVERRUN DETECTION
   {
@@ -170,7 +178,11 @@ private:
   char*           m_buffer;
 };
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_destruction__wrong_number_of_bytes)
+#else
 TEST(StdX_MemoryResource_test_resource, destruction__wrong_number_of_bytes)
+#endif
 {
   // WRONG NUMBER OF BYTES IN DEALLOCATE
   {
@@ -255,7 +267,11 @@ TEST(StdX_MemoryResource_test_resource, create_destroy__correct)
   } //test memory resource is destructed
 }
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_double_deallocation)
+#else
 TEST(StdX_MemoryResource_test_resource, double_deallocation)
+#endif
 {
   // DEALLOCATION OF ALREADY DEALLOCATED POINTER
   {
@@ -424,7 +440,11 @@ private:
   char*           m_buffer;
 };
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_copy_assignment__incorrect)
+#else
 TEST(StdX_MemoryResource_test_resource, copy_assignment__incorrect)
+#endif
 {
   // WRONG ASSIGNMENT OPERATOR
   {
@@ -479,7 +499,7 @@ public:
   pstring_correct_assignment_operator& operator=(const pstring_correct_assignment_operator& rhs)
   {
     char* buff = m_allocator.allocate_object<char>(rhs.m_length + 1U); //create new buffer
-    m_allocator.deallocate_object(m_buffer, m_length ? m_length + 1U : 0U); //deallocate actual buffer
+    m_allocator.deallocate_object(m_buffer, m_length + 1U); //deallocate actual buffer
     m_buffer = buff;
     strncpy(m_buffer, rhs.m_buffer, m_length);
     m_length = rhs.m_length;
@@ -543,7 +563,11 @@ TEST(StdX_MemoryResource_test_resource, copy_assignment__correct)
   } //test memory resource is destructed
 }
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_self_assignment__incorrect)
+#else
 TEST(StdX_MemoryResource_test_resource, self_assignment__incorrect)
+#endif
 {
   // SELF‐ASSIGNMENT TEST
   {
@@ -697,7 +721,7 @@ public:
   {
   }
 
-  pstring_with_move_constructor(pstring_with_move_constructor&& other, allocator_type allocator) noexcept
+  pstring_with_move_constructor(pstring_with_move_constructor&& other, allocator_type allocator)
     : m_allocator(allocator) //don't propagate other allocator on extended move constructor
     , m_length(other.m_length)
   {
@@ -782,8 +806,9 @@ public:
   {
     //don't swap allocators
     //swap can be done only on objects allocated with the same allocator
-    std::swap(m_length, other.m_length);
-    std::swap(m_buffer, other.m_buffer);
+    using std::swap;
+    swap(m_length, other.m_length);
+    swap(m_buffer, other.m_buffer);
   }
 
 private:
@@ -930,7 +955,11 @@ TEST(StdX_MemoryResource_aligned_header, size_and_alignment_verification)
   EXPECT_EQ(stdx::pmr::detail::aligned_header_size_v<4096U>, 4096U);
 }
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_overwrite_padding_before_payload)
+#else
 TEST(StdX_MemoryResource_test_resource, overwrite_padding_before_payload)
+#endif
 {
   const bool verbose = g_verbose;
   stdx::pmr::test_resource dr("default", verbose);
@@ -938,12 +967,16 @@ TEST(StdX_MemoryResource_test_resource, overwrite_padding_before_payload)
   {
     pstring_correct astring{ "foobar", &dr };
     auto* ptr = astring.get_buffer() - 4U;
-    *ptr = 0x65; //write 'e' - overwrite the tail padding area
+    *ptr = 0x65; //write 'e' - overwrite the first padding area
   }
   EXPECT_EQ(dr.bounds_errors(), 1LL);
 }
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(StdX_MemoryResource_test_resource, DISABLED_overwrite_padding_after_payload)
+#else
 TEST(StdX_MemoryResource_test_resource, overwrite_padding_after_payload)
+#endif
 {
   const bool verbose = g_verbose;
   stdx::pmr::test_resource dr("default", verbose);

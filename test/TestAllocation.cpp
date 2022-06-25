@@ -93,7 +93,7 @@ struct BaseEvent
 
   // extended move constructor
   BaseEvent(BaseEvent&& other, [[maybe_unused]] allocator_type alloc) noexcept
-    : m_eventType{ std::move(other.m_eventType) }
+    : m_eventType{ other.m_eventType } // trivially-copyable type -> std::move has no effect
   {
   }
 
@@ -103,9 +103,11 @@ struct BaseEvent
   //move assignment operator
   BaseEvent& operator=(BaseEvent&& other) noexcept
   {
-    //assumption the same allocator - memory resource is used for all Events
-    m_eventType = std::exchange(other.m_eventType, -1);
-    return *this;
+      if (this != &other)
+      {
+          //assumption the same allocator - memory resource is used for all Events
+          m_eventType = std::exchange(other.m_eventType, -1);
+      }
   }
 
   virtual ~BaseEvent() noexcept = default;
@@ -123,7 +125,7 @@ struct BaseEvent
    */
   static std::pmr::memory_resource* get_memory_resource()
   {
-    static const bool verbose = g_verbose;
+    static constexpr bool verbose = g_verbose;
 
     // the cascade of memory_resources
     //the 1sth resource
@@ -148,7 +150,7 @@ struct BaseEvent
   // is finished automatically
   //static std::pmr::memory_resource* get_memory_resource()
   //{
-  //  static const bool verbose = g_verbose;
+  //  static constexpr bool verbose = g_verbose;
   //  static stdx::pmr::test_resource tr_default("BaseEvent: default_pool", verbose);
   //  tr_default.set_no_abort(true);
   //  static std::pmr::synchronized_pool_resource sync_pool(
@@ -199,8 +201,7 @@ template<typename E, typename... ARGS
 static std::shared_ptr<E>
 create_dynamic_shared(ARGS&&... args)
 {
-  auto* p = new E(std::forward<ARGS>(args)...);
-  if (p)
+  if (auto* p = new E(std::forward<ARGS>(args)...); p)
   {
     // let internals of shared_ptr<E> be allocated via the Event memory_resource
     // and achieve a better locality
@@ -222,7 +223,7 @@ struct Event final : BaseEvent//, public MemoryHandler<Event>
   Event& operator=(const Event&) = default;
   Event& operator=(Event&&) = default;
 
-  int level;
+  int level {-1};
 
   ~Event() override
   {
@@ -235,7 +236,7 @@ struct Event final : BaseEvent//, public MemoryHandler<Event>
 TEST(StdX_Allocation, collection_of_Event)
 {
   {
-    const bool verbose = g_verbose;
+    constexpr bool verbose = g_verbose;
     stdx::pmr::test_resource tr_default("default_pool", verbose);
     tr_default.set_no_abort(true);
     {
